@@ -1,0 +1,366 @@
+using NPOI.HSSF.UserModel;
+using NPOI.SS.UserModel;
+using NPOI.XSSF.UserModel;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Collections;
+using System.Text.RegularExpressions;
+
+namespace test
+{
+
+    public class Subject
+    {
+
+        public int id;//用所在dataset.table的行号来唯一识别。
+        public DateTime date;//考试日期
+        public DateTime start_time;//考试开始时间
+        public DateTime end_time;//考试结束时间
+        public int teacher_num;//需要的老师数量
+        public string name;//分配的监考结果
+
+        public Subject(int i, DateTime d1, DateTime d2, DateTime d3, int num)
+        {
+            id = i;
+            date = d1;
+            start_time = d2;
+            end_time = d3;
+            teacher_num = num;
+            name = "";
+        }
+
+        public Subject() { name = null; }
+
+    }
+
+    public class del_TRoom
+    {
+        public string name;
+        public DateTime start_time;
+        public DateTime end_time;
+        public DateTime date;//考试日期
+
+        public del_TRoom(string s1, DateTime s2, DateTime s3,DateTime s4) { name = s1; date=s2; start_time = s3; end_time = s4; }
+        public del_TRoom() { }
+    }
+    public class TRoom
+    {
+        public string name;
+        public int num;
+
+        public TRoom(string s1, int s2) { name = s1; num = s2; }
+        public TRoom() { }
+
+    }
+
+
+    public class handle_data
+    {
+        public static void TransformIntoTRoom(DataTable t, List<TRoom> L)
+        {
+            List<string> data = t.AsEnumerable().Select(c => c.Field<string>("人数")).ToList();
+            List<string> data2 = t.AsEnumerable().Select(c => c.Field<string>("主任")).ToList();
+            for (int i = 0; i < data.Count; i++)
+            {
+
+                L.Add(new TRoom(data2[i], int.Parse(data[i])));
+
+            }
+        }
+        public static void TransformIntoSubject(DataTable t, List<Subject> L) //引用传参
+        {
+
+            List<string> data = t.AsEnumerable().Select(c => c.Field<string>("日期")).ToList();
+            List<string> data2 = t.AsEnumerable().Select(c => c.Field<string>("时间")).ToList();
+            List<string> data3 = t.AsEnumerable().Select(c => c.Field<string>("人数")).ToList();
+
+
+            for (int i = 0; i < data.Count; i++)
+            {
+                string pattern = "^\\d{4}/\\d{1,2}/\\d{1,2}";//日期正则表达式 2026/2/6
+                Match mch = Regex.Match(data[i], pattern);//
+                string now = mch.Value.Trim();//转化匹配结果为字符串
+                DateTime dt = DateTime.ParseExact(now, "yyyy/M/d", System.Globalization.CultureInfo.CurrentCulture);//日期
+                //*********************************************************************
+                string[] arrnow = Regex.Split(data2[i], "-");
+                string start_time = now + " " + arrnow[0];
+                string end_time = now + " " + arrnow[1];
+                DateTime dt_start = DateTime.ParseExact(start_time, "yyyy/M/d H:mm", System.Globalization.CultureInfo.CurrentCulture);//开始时间
+                DateTime dt_end = DateTime.ParseExact(end_time, "yyyy/M/d H:mm", System.Globalization.CultureInfo.CurrentCulture);//开始时间
+                //Console.WriteLine(dt_start + " " + dt_end);
+                //**********************************************************************
+
+                if (data3[i] == "")
+                {
+                    data3[i] = "0";
+
+                }
+                int x = Program.Convert(int.Parse(data3[i]));
+                L.Add(new Subject(i, dt, dt_start, dt_end, x));
+
+
+                //Console.WriteLine(dt);
+
+                // Console.WriteLine(i+" "+data[i]+" "+data2[i]+" "+data3[i]);
+
+
+            }
+        }
+    }
+
+    public class Program
+    {
+        public static DataSet ExcelToDataSet(string filePath, bool isFirstLineColumnName, int StartRow)
+        {
+            DataSet dataSet = new DataSet();
+            int startRow = StartRow;
+
+
+            using (FileStream fs = File.OpenRead(filePath))
+            {
+                IWorkbook workbook = null;
+                // 如果是2007+的Excel版本
+                if (filePath.IndexOf(".xlsx") > 0)
+                {
+                    workbook = new XSSFWorkbook(fs);
+                }
+                // 如果是2003-的Excel版本
+                else if (filePath.IndexOf(".xls") > 0)
+                {
+                    workbook = new HSSFWorkbook(fs);
+                }
+                if (workbook != null)
+                {
+                    //循环读取Excel的每个sheet，每个sheet页都转换为一个DataTable，并放在DataSet中
+                    for (int p = 0; p < workbook.NumberOfSheets; p++)
+                    {
+                        ISheet sheet = workbook.GetSheetAt(p);
+                        DataTable dataTable = new DataTable();
+                        dataTable.TableName = sheet.SheetName;
+                        if (sheet != null)
+                        {
+                            int rowCount = sheet.LastRowNum;//获取总行数
+                            if (rowCount > 0)
+                            {
+                                IRow firstRow = sheet.GetRow(startRow);//获取第一行
+                                int cellCount = firstRow.LastCellNum;//获取总列数
+
+                                //Console.WriteLine(cellCount);
+
+                                //构建datatable的列
+                                if (isFirstLineColumnName)
+                                {
+                                    startRow = startRow + 1;//如果第一行是列名，则从第二行开始读取***********************************************
+                                    for (int i = firstRow.FirstCellNum; i < cellCount; ++i)
+                                    {
+                                        ICell cell = firstRow.GetCell(i);
+                                        cell.SetCellType(CellType.String);
+                                        if (cell != null)
+                                        {
+                                            if (cell.StringCellValue != null)
+                                            {
+                                                DataColumn column = new DataColumn(cell.StringCellValue);
+                                                dataTable.Columns.Add(column);
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    for (int i = firstRow.FirstCellNum; i < cellCount; ++i)
+                                    {
+                                        DataColumn column = new DataColumn("column" + (i + 1));
+                                        dataTable.Columns.Add(column);
+                                    }
+                                }
+
+                                //填充行
+                                for (int i = startRow; i <= rowCount; ++i)
+                                {
+                                    IRow row = sheet.GetRow(i);
+                                    if (row == null) continue;
+
+                                    DataRow dataRow = dataTable.NewRow();
+                                    for (int j = row.FirstCellNum; j < cellCount; ++j)
+                                    {
+                                        ICell cell = row.GetCell(j);
+                                        if (cell == null)
+                                        {
+                                            dataRow[j] = "";
+                                        }
+                                        else
+                                        {
+                                            //CellType(Unknown = -1,Numeric = 0,String = 1,Formula = 2,Blank = 3,Boolean = 4,Error = 5,)
+                                            switch (cell.CellType)
+                                            {
+                                                case CellType.Blank:
+                                                    dataRow[j] = "";
+                                                    break;
+                                                case CellType.Numeric:
+                                                    short format = cell.CellStyle.DataFormat;
+                                                    //对时间格式（2015.12.5、2015/12/5、2015-12-5等）的处理
+                                                    if (format == 14 || format == 31 || format == 57 || format == 58 || format == 176)
+                                                        dataRow[j] = cell.DateCellValue;
+                                                    else
+                                                        dataRow[j] = cell.NumericCellValue;
+                                                    break;
+                                                case CellType.String:
+                                                    dataRow[j] = cell.StringCellValue;
+                                                    break;
+                                            }
+                                        }
+                                    }
+                                    dataTable.Rows.Add(dataRow);
+                                }
+                            }
+                        }
+                        dataSet.Tables.Add(dataTable);
+                    }
+
+                }
+            }
+            return dataSet;
+
+
+        }
+        
+        public static int Convert(int num)
+        {
+            if (num < 70)
+            {
+                return 2;
+            }
+            else if (num >= 70 && num<100)
+            {
+                return 3;
+            }
+            else if (num >= 100 && num < 150)
+            {
+                return 4;
+            }
+            else if (num >= 150 && num < 180)
+            {
+                return 5;
+            }
+            else if (num >= 180)
+            {
+                return 6;
+            }
+            return 0;
+        }
+       
+
+        public static void  delete_input(string s1, DateTime s2, DateTime s3, DateTime s4, List<del_TRoom> s5)
+        {
+            s5.Add(new del_TRoom(s1, s2, s3, s4));
+        }
+
+        public static bool delete_if(string s1, DateTime s2, DateTime s3, DateTime s4, List<del_TRoom> s5)
+        {
+            int i = 0;
+            while (i < s5.Count)
+            {
+                del_TRoom search= s5[i];
+                if (search.name == s1)
+                {
+                        if ((DateTime.Compare(search.start_time, s3) >= 0 && DateTime.Compare(search.start_time, s4) <= 0) || (DateTime.Compare(search.end_time, s3) >= 0 && DateTime.Compare(search.end_time, s4) <= 0))
+                        {
+                            return true;
+                        }
+                        
+                }
+                    i++;
+            }
+            return false;
+        }
+        public static void output(List<Subject> S, List<TRoom> L, List<del_TRoom> D)
+        {
+            int sub_i = 0;//科目编号
+            int troom_i = 0;
+            int num = 0;
+            //Console.WriteLine(S[0].id);
+            num = L[troom_i].num;
+            //Console.WriteLine("主任名为{0},人数为{1}", L[troom_i].name, L[troom_i].num);
+            while (S.Count != sub_i)//科目未结束
+            {
+                    int teacher_num = S[sub_i].teacher_num;//设置科目需要人数
+                if (num >= teacher_num)//教研室剩下老师足够
+                {
+                    //安排老师
+                    //Console.WriteLine("主任名为{0},人数为{1}", L[troom_i].name, L[troom_i].num);
+                    //Console.WriteLine("科目为{2}，主任名为{0},人数为{1}", L[troom_i].name, teacher_num, S[sub_i].id);
+                    while(delete_if(L[troom_i].name, S[sub_i].date, S[sub_i].start_time, S[sub_i].end_time,D))
+                    {
+                        troom_i++;
+                    }
+                    S[sub_i].name = S[sub_i].name + L[troom_i].name + teacher_num + "人";
+                    troom_i++;
+                    if (L.Count == troom_i)
+                    {
+                        troom_i = 0;
+                    }
+                    num = L[troom_i].num;
+                    //excel写name+teacher_num
+                }
+                else
+                {
+                    while (teacher_num - num > 0)//意思是相等的也跳
+                    {
+                        teacher_num = teacher_num - num;
+                        //Console.WriteLine("主任名为{0},人数为{1}", L[troom_i].name, L[troom_i].num);
+                        //Console.WriteLine("科目为{2}，主任名为{0},人数为{1}", L[troom_i].name, num, S[sub_i].id);
+                        S[sub_i].name = S[sub_i].name + L[troom_i].name + num + "人";
+                        S[sub_i].name = S[sub_i].name + "+";
+                        //excel写name+num
+                        troom_i++;//下一个教研室
+                        if (L.Count == troom_i)
+                        {
+                            troom_i = 0;
+                        }
+                        num = L[troom_i].num;
+
+                        if (teacher_num - num <= 0)
+                        {
+                            //Console.WriteLine("主任名为{0},人数为{1}", L[troom_i].name, L[troom_i].num);
+                            S[sub_i].name = S[sub_i].name + L[troom_i].name + teacher_num + "人";
+                            troom_i++;
+                            if (L.Count == troom_i)
+                            {
+                                troom_i = 0;
+                            }
+                            num = L[troom_i].num;
+                        }
+                    }
+                }
+                Console.WriteLine(S[sub_i].name);
+                sub_i++;
+                //下一个科目
+
+                //科目的next
+            }
+        }
+        static void Main(string[] args)
+        {
+            string path_jk = "C:\\Users\\LongRow\\Desktop\\C#\\course_design\\监考.xlsx";
+            string path_jys = "C:\\Users\\LongRow\\Desktop\\C#\\course_design\\教研室.xlsx";
+            DataSet dataSet_jk = ExcelToDataSet(path_jk, true, 1);
+            DataSet dataSet_jys = ExcelToDataSet(path_jys, true, 0);
+            List<TRoom> L = new List<TRoom>();
+            List<Subject> S = new List<Subject>();
+            List<del_TRoom> D = new List<del_TRoom>();
+
+            handle_data.TransformIntoSubject(dataSet_jk.Tables[0], S);//S-监考表
+            handle_data.TransformIntoTRoom(dataSet_jys.Tables[0], L);//L-教研室
+
+            //delete_input(L[0].name, S[0].date, S[0].start_time, S[0].end_time, D);//测试，加入第一个考试和教研室
+            output(S, L, D);
+
+        }
+           
+    }
+}
